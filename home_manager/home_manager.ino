@@ -73,6 +73,18 @@ char * otherSubMenu[] = {
   "About"
 };
 
+#define BASE            0
+#define LOWER_JOINT     1
+#define UPPER_JOINT     2
+#define GRIPPER         3
+char * robotArmSegments[] = {
+  "Base",
+  "JntL",
+  "JntU",
+  "Grip"
+};
+int selectedRobotArmSegment = BASE;
+
 #define DOOR_LOCK_OPEN  3000    // stays open for 3 seconds
 #define EMAIL_CONTACT   "simon.balazs@outlook.com"  // e-mail address of your emergency contact
 
@@ -338,6 +350,11 @@ void loop() {
       currentMenuPointInSubMenu--;
       refreshMenu();
     }
+    else if(currentLayer == APPLICATION){
+      if (currentMenuPointInSubMenu == CONTROL && !doTask) {
+        selectedRobotArmSegment = selectedRobotArmSegment != BASE ? selectedRobotArmSegment - 1 : GRIPPER;
+      }
+    }
   }
   else if (buttonUpdate(ENTER_BUTTON, 1)) {
     timeOfLastClick = millis();
@@ -365,6 +382,11 @@ void loop() {
     else if (currentLayer == SUB_MENU && currentMenuPointInSubMenu < getLastElementOfCurrentSubMenu()) {
       currentMenuPointInSubMenu++;
       refreshMenu();
+    }
+    else if(currentLayer == APPLICATION){
+      if (currentMenuPointInSubMenu == CONTROL && !doTask) {
+        selectedRobotArmSegment = selectedRobotArmSegment != GRIPPER ? selectedRobotArmSegment + 1 : BASE;
+      }
     }
   }
   else if (buttonUpdate(BACK_BUTTON, 3)) {
@@ -554,7 +576,7 @@ void refreshApplication() {
       break;
     case ROBOT_ARM:
       if (currentMenuPointInSubMenu == CONTROL) {
-
+        drawControl();
       }
       else if (currentMenuPointInSubMenu == VIEW_SENSOR) {
         drawViewSensorData();
@@ -680,7 +702,6 @@ int counterDigits() {
   int count = 0;
   while (n != 0)
   {
-    // n = n/10
     n /= 10;
     ++count;
   }
@@ -759,6 +780,67 @@ void drawKitchenSinkLights(){
   }
 }
 
+void drawControl(){
+  display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(43, 0);
+  display.println("Control");
+
+  switch(selectedRobotArmSegment){
+    case BASE:
+      if(doTask && selectedRobotArmSegment == BASE)
+        display.fillRect(0, 9, 32, 14, WHITE);
+      else
+        display.drawRect(0, 9, 32, 14, WHITE);
+      break;
+    case LOWER_JOINT:
+      if(doTask && selectedRobotArmSegment == LOWER_JOINT)
+        display.fillRect(32, 9, 32, 14, WHITE);
+      else
+        display.drawRect(32, 9, 32, 14, WHITE);
+      break;
+    case UPPER_JOINT:
+      if(doTask && selectedRobotArmSegment == UPPER_JOINT)
+        display.fillRect(64, 9, 32, 14, WHITE);
+      else
+        display.drawRect(64, 9, 32, 14, WHITE);
+      break;
+    case GRIPPER:
+      if(doTask && selectedRobotArmSegment == GRIPPER)
+        display.fillRect(96, 9, 32, 14, WHITE);
+      else
+        display.drawRect(96, 9, 32, 14, WHITE);
+      break;
+  }
+  
+  display.setTextColor(doTask && selectedRobotArmSegment == BASE ? BLACK : WHITE);
+  display.setCursor(4, 12);
+  display.println(robotArmSegments[BASE]);
+  
+  display.setTextColor(doTask && selectedRobotArmSegment == LOWER_JOINT ? BLACK : WHITE);
+  display.setCursor(36, 12);
+  display.println(robotArmSegments[LOWER_JOINT]);
+  
+  display.setTextColor(doTask && selectedRobotArmSegment == UPPER_JOINT ? BLACK : WHITE);
+  display.setCursor(68, 12);
+  display.println(robotArmSegments[UPPER_JOINT]);
+  
+  display.setTextColor(doTask && selectedRobotArmSegment == GRIPPER ? BLACK : WHITE);
+  display.setCursor(100, 12);
+  display.println(robotArmSegments[GRIPPER]);
+  
+  display.setTextColor(WHITE);
+  if (doTask){
+    display.setCursor(52, 24);
+    display.println("Stop");
+  }
+  else{
+    display.setCursor(52, 24);
+    display.println("Move");
+  }
+}
+
 void drawViewSensorData() {
   mpu6050.update();
   display.setTextSize(1);
@@ -813,7 +895,6 @@ void drawBatteryInfo() {
   display.println("Voltage:");
   display.setCursor(80, 24);
   display.println(sensor.getInstantaneousVoltage());
-
 }
 
 void drawAboutApp() {
