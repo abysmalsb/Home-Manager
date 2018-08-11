@@ -38,26 +38,24 @@ char * mainMenu[] = {
 
 #define CALL_FOR_HELP   0
 #define FALL_DETECTION  1
-#define SLEEPING        2
 char * safetySubMenu[] = {
   "Call for help",
-  "Fall detection",
-  "Sleeping"
+  "Fall detection"
 };
 
-#define RUNNING         0
+#define PEDOMETER         0
 #define JUMPING         1
 char * sportSubMenu[] = {
-  "Running",
+  "Pedometer",
   "Jumping"
 };
 
 #define MY_DOOR_LOCK        0
-#define WATERING_MIMOSA     1
+#define IRRIGATING_MIMOSA     1
 #define KITCHEN_SINK_LIGHTS 2
 char * homeSubMenu[] = {
   "My door lock",
-  "Watering mimosa",
+  "Irrigating mimosa",
   "Kitchen sink lights"
 };
 
@@ -74,6 +72,9 @@ char * otherSubMenu[] = {
   "Battery",
   "About"
 };
+
+#define DOOR_LOCK_OPEN  3000    // stays open for 3 seconds
+#define EMAIL_CONTACT   "simon.balazs@outlook.com"  // e-mail address of your emergency contact
 
 int previousButtonState[] =  {LOW, LOW, LOW, LOW};
 
@@ -316,6 +317,13 @@ void enableCharging(){//Configure the Power-Management (Power-Hold)
   if (MAX77650_debug) Serial.println("End Initialisation of MAX77650");
 }
 
+void drawSplashScreen(void) {
+  // drawing Hackster logo
+  display.drawBitmap(0, 2,  hackster_logo_bmp, 32, 28, 1);
+  // drawing Maxim logo
+  display.drawBitmap(96, 2,  maxim_logo_bmp, 32, 28, 1);
+}
+
 void loop() {
   if (buttonUpdate(LEFT_BUTTON, 0)) {
     timeOfLastClick = millis();
@@ -387,6 +395,17 @@ void loop() {
   }
 }
 
+void switchOffDisplay() {
+  displayEnabled = false;
+  display.clearDisplay();
+  display.display();
+}
+
+void switchOnDisplay() {
+  displayEnabled = true;
+  refreshMenu();
+}
+
 bool buttonUpdate(int buttonId, int previousStateId) {
 
   int currentButtonState = digitalRead(buttonId);
@@ -400,13 +419,6 @@ bool buttonUpdate(int buttonId, int previousStateId) {
   }
   previousButtonState[previousStateId] = currentButtonState;
   return needsUpdate;
-}
-
-void drawSplashScreen(void) {
-  // drawing Hackster logo
-  display.drawBitmap(0, 2,  hackster_logo_bmp, 32, 28, 1);
-  // drawing Maxim logo
-  display.drawBitmap(96, 2,  maxim_logo_bmp, 32, 28, 1);
 }
 
 void refreshMenu() {
@@ -496,7 +508,7 @@ void drawSubMenu(char * subMenu[]) {
 int getLastElementOfCurrentSubMenu() {
   switch (currentMenuPointInMainMenu) {
     case SAFETY:
-      return SLEEPING;
+      return FALL_DETECTION;
     case SPORT:
       return JUMPING;
     case HOME:
@@ -514,10 +526,16 @@ int getLastElementOfCurrentSubMenu() {
 void refreshApplication() {
   switch (currentMenuPointInMainMenu) {
     case SAFETY:
+      if (currentMenuPointInSubMenu == CALL_FOR_HELP) {
+        drawCallForHelp();
+      }
+      else if (currentMenuPointInSubMenu == FALL_DETECTION) {
+        drawFallDetection();
+      }
       break;
     case SPORT:
-      if (currentMenuPointInSubMenu == RUNNING) {
-
+      if (currentMenuPointInSubMenu == PEDOMETER) {
+        drawPedometer();
       }
       else if (currentMenuPointInSubMenu == JUMPING) {
         drawJumping();
@@ -525,13 +543,13 @@ void refreshApplication() {
       break;
     case HOME:
       if (currentMenuPointInSubMenu == MY_DOOR_LOCK) {
-
+        drawMyDoorLock();
       }
-      else if (currentMenuPointInSubMenu == WATERING_MIMOSA) {
-
+      else if (currentMenuPointInSubMenu == IRRIGATING_MIMOSA) {
+        drawIrrigatingMimosa();
       }
       else if (currentMenuPointInSubMenu == KITCHEN_SINK_LIGHTS) {
-
+        drawKitchenSinkLights();
       }
       break;
     case ROBOT_ARM:
@@ -555,35 +573,99 @@ void refreshApplication() {
   }
 }
 
-void switchOffDisplay() {
-  displayEnabled = false;
-  display.clearDisplay();
-  display.display();
+void drawCallForHelp(){
+  display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(28, 0);
+  display.println("Call for help");
+  display.setTextColor(WHITE);
+  display.setCursor(0, 8);
+  display.println("Contact:");
+  display.setCursor(0, 16);
+  display.setTextWrap(false);
+  display.println(EMAIL_CONTACT);
+  display.setTextWrap(true);
+  if (doTask){
+    if(millis() - timeOfLastClick > DOOR_LOCK_OPEN){
+      doTask = !doTask;
+    }
+    display.setCursor(39, 24);
+    display.println("Contacted");
+  }
+  else{
+    display.setCursor(28, 24);
+    display.println("Ask for help");
+  }
 }
 
-void switchOnDisplay() {
-  displayEnabled = true;
-  refreshMenu();
+void drawFallDetection(){
+  display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(22, 0);
+  display.println("Fall detection");
+  display.setTextColor(WHITE);
+  display.setCursor(0, 12);
+  display.println("Status:");
+  if (doTask){
+    display.setCursor(46, 12);
+    display.println("On");
+    display.setCursor(43, 24);
+    display.println("Disable");
+  }
+  else{
+    display.setCursor(46, 12);
+    display.println("Off");
+    display.setCursor(46, 24);
+    display.println("Enable");
+  }
+}
+
+void drawPedometer() {
+  display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(37, 0);
+  display.println("Pedometer");
+  display.setTextColor(WHITE);
+  if (doTask) {
+    display.setCursor(51, 25);
+    display.println("Stop");
+    updateCounter();
+  }
+  else {
+    display.setCursor(49, 25);
+    display.println("Start");
+    counter = 0;
+  }
+
+  display.setTextSize(2);
+  display.setCursor(64 - counterDigits() * 6, 9);
+  display.println(counter);
+  counter++;
 }
 
 void drawJumping() {
   display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(49, 0);
   display.println("Jumps");
+  display.setTextColor(WHITE);
   if (doTask) {
-    display.setCursor(51, 24);
+    display.setCursor(51, 25);
     display.println("Stop");
+    updateCounter();
   }
   else {
-    display.setCursor(49, 24);
+    display.setCursor(49, 25);
     display.println("Start");
+    counter = 0;
   }
 
-  updateCounter();
-
   display.setTextSize(2);
-  display.setCursor(64 - counterDigits() * 6, 8);
+  display.setCursor(64 - counterDigits() * 6, 9);
   display.println(counter);
   counter++;
 }
@@ -602,7 +684,79 @@ int counterDigits() {
     n /= 10;
     ++count;
   }
-  return count;
+  return count != 0 ? count : 1;
+}
+
+
+void drawMyDoorLock(){
+  display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(28, 0);
+  display.println("My door lock");
+  display.setTextColor(WHITE);
+  display.setCursor(0, 12);
+  display.println("Status:");
+  if (doTask){
+    if(millis() - timeOfLastClick > DOOR_LOCK_OPEN){
+      doTask = !doTask;
+    }
+    display.setCursor(46, 12);
+    display.println("Unlocked");
+  }
+  else{
+    display.setCursor(46, 12);
+    display.println("Locked");
+    display.setCursor(52, 24);
+    display.println("Open");
+  }
+}
+
+void drawIrrigatingMimosa(){
+  display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(13, 0);
+  display.println("Irrigating mimosa");
+  display.setTextColor(WHITE);
+  display.setCursor(0, 12);
+  display.println("Soil moisture:");
+  display.setCursor(86, 12);
+  display.println("12345");
+  if (doTask){
+    if(millis() - timeOfLastClick > DOOR_LOCK_OPEN){
+      doTask = !doTask;
+    }
+    display.setCursor(25, 24);
+    display.println("Irrigating...");
+  }
+  else{
+    display.setCursor(25, 24);
+    display.println("Do irrigation");
+  }
+}
+
+void drawKitchenSinkLights(){
+  display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(7, 0);
+  display.println("Kitchen sink lights");
+  display.setTextColor(WHITE);
+  display.setCursor(0, 12);
+  display.println("Status:");
+  if (doTask){
+    display.setCursor(46, 12);
+    display.println("On");
+    display.setCursor(40, 24);
+    display.println("Turn off");
+  }
+  else{
+    display.setCursor(46, 12);
+    display.println("Off");
+    display.setCursor(43, 24);
+    display.println("Turn on");
+  }
 }
 
 void drawViewSensorData() {
@@ -642,27 +796,33 @@ float correctGyroAngle(float sensorAngle) {
 
 void drawBatteryInfo() {
   display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(43, 0);
+  display.println("Battery");
   display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-  display.println("Battery:");
-  display.setCursor(8, 8);
+  display.setCursor(0, 8);
   display.println("Status (%):");
-  display.setCursor(88, 8);
+  display.setCursor(80, 8);
   display.println(sensor.getSOC());
-  display.setCursor(8, 16);
+  display.setCursor(0, 16);
   display.println("Hours remain:");
-  display.setCursor(88, 16);
+  display.setCursor(80, 16);
   display.println(sensor.getTimeToEmpty());
-  display.setCursor(8, 24);
+  display.setCursor(0, 24);
   display.println("Voltage:");
-  display.setCursor(88, 24);
+  display.setCursor(80, 24);
   display.println(sensor.getInstantaneousVoltage());
+
 }
 
 void drawAboutApp() {
   display.setTextSize(1);
+  display.fillRect(0, 0, 128, 8, WHITE);
+  display.setTextColor(BLACK);
+  display.setCursor(49, 0);
+  display.println("About");
   display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-  display.println("Creator:\nBalazs Simon\nWeb:\nhackster.io/Abysmal");
-  display.drawLine(0, display.height() / 2, display.width(), display.height() / 2, WHITE);
+  display.setCursor(0, 8);
+  display.println("Creator: Balazs Simon\nWeb:\nhackster.io/Abysmal");
 }
