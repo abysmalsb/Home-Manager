@@ -6,6 +6,8 @@
 #include <MAX77650-Arduino-Library.h>
 #include <MAX17055.h>
 
+#define ESP_SERIAL      Serial0
+
 #define OLED_RESET      4
 Adafruit_SSD1306 display(OLED_RESET);
 
@@ -85,8 +87,30 @@ char * robotArmSegments[] = {
 };
 int selectedRobotArmSegment = BASE;
 
-#define DOOR_LOCK_OPEN  3000    // stays open for 3 seconds
-#define EMAIL_CONTACT   "simon.balazs@outlook.com"  // e-mail address of your emergency contact
+#define DOOR_LOCK_OPEN  3000                              // the door stays open for 3 seconds
+#define EMAIL_CONTACT   "emergency.contact@example.com"        // e-mail address of your emergency contact
+#define EMERGENCY_MSG   "I need help, please come ASAP!"  // emergency email message
+#define FALL_MSG        "I fell, please help!"            // automatic message in case of the owner fell
+
+#define FALLING_THRESHOLD         539.8f
+
+#define PEDOMETER_THRESHOLD_HIGH  0.65f
+#define PEDOMETER_THRESHOLD_LOW   -0.65f
+#define BURNT_CALORY_PER_STEP     0.05f
+#define JUMPING_THRESHOLD_HIGH    0.6f
+#define JUMPING_THRESHOLD_LOW     -0.8f
+float avgAccSum = 500.0f;
+bool overThreshold = false;
+
+#define MQTT_TOPIC_MY_DOOR_LOCK         "my_door_lock"
+#define MQTT_TOPIC_IRRIGATING_MIMOSA    "irrigating_mimosa"
+#define MQTT_TOPIC_KITCHEN_SINK_LIGHTS  "kitchen_sink_lights"
+#define MQTT_TOPIC_ROBOT_CONTROL        "robot_control"
+
+float robotBaseAngle = 90.0f;
+float robotLowerJointAngle = 90.0f;
+float robotUpperJointAngle = 90.0f;
+float robotGripper = 90.0f;
 
 int previousButtonState[] =  {LOW, LOW, LOW, LOW};
 
@@ -195,6 +219,8 @@ MAX17055 sensor;
 
 int counter = 0;
 boolean doTask = false;
+boolean previousDoTask = false;
+
 
 void setup()   {
   // enabling power from battery
@@ -202,6 +228,7 @@ void setup()   {
   digitalWrite(MAX77650_PHLD, HIGH);       //set output to HIGH to hold the power-on state
 
   Serial.begin(115200);
+  ESP_SERIAL.begin(115200);
   
   enableCharging();
 
@@ -239,94 +266,6 @@ void setup()   {
   refreshMenu();
 
   timeOfLastClick = millis();
-}
-
-void enableCharging(){//Configure the Power-Management (Power-Hold)
-  MAX77650_init();
-
-  //Baseline Initialization following rules printed in MAX77650 Programmres Guide Chapter 4 Page 5
-  if (MAX77650_debug) Serial.print("Set Main Bias to normal Mode: ");
-  if (MAX77650_setSBIA_LPM(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //Set Main Bias to normal Mode
-  if (MAX77650_debug) Serial.print("Set On/Off-Button to push-button-mode: ");
-  if (MAX77650_setnEN_MODE(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //set on/off-button to push-button
-  if (MAX77650_debug) Serial.print("Set nEN input debounce time to 30ms: ");
-  if (MAX77650_setDBEN_nEN(true)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //set on/off-button to push-button
-  if (MAX77650_debug) Serial.print("Comparing part-numbers: ");
-  if (MAX77650_getDIDM() == PMIC_partnumber) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //checking partnumbers
-  if (MAX77650_debug) Serial.print("Checking OTP options: ");
-  if (MAX77650_getCID() != MAX77650_CID) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //checking OTP options
-  //Values for NTC beta=3800K; Battery-values are for 1s 303759 with 600mAh
-  if (MAX77650_debug) Serial.print("Set the VCOLD JEITA Temperature Threshold to 0°C: ");
-  if (MAX77650_setTHM_COLD(2)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //0°C
-  if (MAX77650_debug) Serial.print("Set the VCOOL JEITA Temperature Threshold to 15°C: ");
-  if (MAX77650_setTHM_COOL(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //15°C
-  if (MAX77650_debug) Serial.print("Set the VWARM JEITA Temperature Threshold to 45°C: ");
-  if (MAX77650_setTHM_WARM(2)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //45°C
-  if (MAX77650_debug) Serial.print("Set the VHOT JEITA Temperature Threshold to 60°C: ");
-  if (MAX77650_setTHM_HOT(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //60°C
-  if (MAX77650_debug) Serial.print("Set CHGIN regulation voltage to 4.00V: ");
-  if (MAX77650_setVCHGIN_MIN(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //
-  if (MAX77650_debug) Serial.print("Set CHGIN Input Current Limit to 300mA: ");
-  if (MAX77650_setICHGIN_LIM(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //300mA
-  if (MAX77650_debug) Serial.print("Set the prequalification charge current to 10%: ");
-  if (MAX77650_setI_PQ(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //10%
-  if (MAX77650_debug) Serial.print("Set Battery prequalification voltage threshold to 3.0V: ");
-  if (MAX77650_setCHG_PQ(7)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");        //3.0V
-  if (MAX77650_debug) Serial.print("Set Charger Termination Current to 15% of of fast charge current: ");
-  if (MAX77650_setI_TERM(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");        //15%
-  if (MAX77650_debug) Serial.print("Set Topoff timer value to 0 minutes: ");
-  if (MAX77650_setT_TOPOFF(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");      //0 minutes
-  if (MAX77650_debug) Serial.print("Set the die junction temperature regulation point to 60°C: ");
-  if (MAX77650_setTJ_REG(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");        //60°C Tj
-  if (MAX77650_debug) Serial.print("Set System voltage regulation to 4.50V: ");
-  if (MAX77650_setVSYS_REG(0x10)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //Vsys=4.5V
-  if (MAX77650_debug) Serial.print("Set the fast-charge constant current value to 300mA: ");
-  if (MAX77650_setCHG_CC(0x3f)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //300mA
-  if (MAX77650_debug) Serial.print("Set the fast-charge safety timer to 3h: ");
-  if (MAX77650_setT_FAST_CHG(1)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //3h
-  if (MAX77650_debug) Serial.print("Set IFAST-CHG_JEITA to 300mA: ");
-  if (MAX77650_setCHG_CC_JEITA(0x3f)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //300mA
-  if (MAX77650_debug) Serial.print("Set Thermistor enable bit: ");
-  if (MAX77650_setTHM_EN(true)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //enable the thermistor monitoring
-  if (MAX77650_debug) Serial.print("Set fast-charge battery regulation voltage to 4.20V: ");
-  if (MAX77650_setCHG_CV(0x18)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //4.20V
-  if (MAX77650_debug) Serial.print("Set USB not in power down: ");
-  if (MAX77650_setUSBS(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");      //USBS not suspended
-  if (MAX77650_debug) Serial.print("Set the modified VFAST-CHG to 4.00V: ");
-  if (MAX77650_setCHG_CV_JEITA(0x10)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //4.0V
-  if (MAX77650_debug) Serial.print("Selects the battery discharge current full-scale current value to 300mA: ");
-  if (MAX77650_setIMON_DISCHG_SCALE(0x0A)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //300mA
-  if (MAX77650_debug) Serial.print("Disable the analog MUX output: ");
-  if (MAX77650_setMUX_SEL(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //AMUX=off
-  if (MAX77650_debug) Serial.print("Set the Charger to Enable: ");
-  if (MAX77650_setCHG_EN(true)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");  //enable the Charger
-  if (MAX77650_debug) Serial.print("Disable SIMO Buck-Boost Channel 0 Active-Discharge: ");
-  if (MAX77650_setADE_SBB0(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Disable SIMO Buck-Boost Channel 1 Active-Discharge: ");
-  if (MAX77650_setADE_SBB1(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Disable SIMO Buck-Boost Channel 2 Active-Discharge: ");
-  if (MAX77650_setADE_SBB1(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost to maximum drive strength: ");
-  if (MAX77650_setDRV_SBB(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 0 Peak Current Limit to 500mA: ");
-  if (MAX77650_setIP_SBB0(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 1 Peak Current Limit to 500mA: ");
-  if (MAX77650_setIP_SBB1(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 2 Peak Current Limit to 500mA: ");
-  if (MAX77650_setIP_SBB2(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 2 to on while in stand-by-mode: ");
-  if (MAX77650_setEN_SBB2(0b110)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Initialize Global Interrupt Mask Register: ");
-  if (MAX77650_setINT_M_GLBL(0x0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-  if (MAX77650_debug) Serial.print("Initialize Charger Interrupt Mask Register: ");
-  if (MAX77650_setINT_M_CHG(0x0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
-
-  //Read and clear Interrupt Registers
-  MAX77650_getINT_GLBL();
-  MAX77650_getINT_CHG();
-  MAX77650_getERCFLAG();
-
-  if (MAX77650_debug) Serial.println("End Initialisation of MAX77650");
 }
 
 void drawSplashScreen(void) {
@@ -404,6 +343,7 @@ void loop() {
       refreshMenu();
       counter = 0;
       doTask = false;
+      previousDoTask = false;
     }
   }
 
@@ -609,6 +549,14 @@ void drawCallForHelp(){
   display.println(EMAIL_CONTACT);
   display.setTextWrap(true);
   if (doTask){
+    if(!previousDoTask){
+      previousDoTask = true;
+      ESP_SERIAL.print("{\"type\":\"email\",\"address\":\"");
+      ESP_SERIAL.print(EMAIL_CONTACT);
+      ESP_SERIAL.print("\",\"subject\":\"I NEED HELP!!!\",\"message\":\"");
+      ESP_SERIAL.print(EMERGENCY_MSG);
+      ESP_SERIAL.println("\"}");
+    }
     if(millis() - timeOfLastClick > DOOR_LOCK_OPEN){
       doTask = !doTask;
     }
@@ -616,12 +564,13 @@ void drawCallForHelp(){
     display.println("Contacted");
   }
   else{
+    previousDoTask = false,
     display.setCursor(28, 24);
     display.println("Ask for help");
   }
 }
 
-void drawFallDetection(){
+void drawFallDetection() {
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
   display.setTextColor(BLACK);
@@ -630,13 +579,24 @@ void drawFallDetection(){
   display.setTextColor(WHITE);
   display.setCursor(0, 12);
   display.println("Status:");
-  if (doTask){
+  if (doTask) {
+    mpu6050.update();
+    float currAccSum = abs(correctGyroAngle(mpu6050.getAccY())) + abs(correctGyroAngle(mpu6050.getAccX())) + abs(correctGyroAngle(mpu6050.getAccZ()));
+    if (!previousDoTask && currAccSum > FALLING_THRESHOLD) {
+      previousDoTask = true;
+      ESP_SERIAL.print("{\"type\":\"email\",\"address\":\"");
+      ESP_SERIAL.print(EMAIL_CONTACT);
+      ESP_SERIAL.print("\",\"subject\":\"I FELL PLEASE HELP!!!\",\"message\":\"");
+      ESP_SERIAL.print(FALL_MSG);
+      ESP_SERIAL.println("\"}");
+    }
     display.setCursor(46, 12);
     display.println("On");
     display.setCursor(43, 24);
     display.println("Disable");
   }
-  else{
+  else {
+    previousDoTask = false;
     display.setCursor(46, 12);
     display.println("Off");
     display.setCursor(46, 24);
@@ -652,9 +612,9 @@ void drawPedometer() {
   display.println("Pedometer");
   display.setTextColor(WHITE);
   if (doTask) {
-    display.setCursor(51, 25);
-    display.println("Stop");
-    updateCounter();
+    display.setCursor(49, 25);
+    display.println("Reset");
+    updateCounter(true);
   }
   else {
     display.setCursor(49, 25);
@@ -662,10 +622,14 @@ void drawPedometer() {
     counter = 0;
   }
 
-  display.setTextSize(2);
-  display.setCursor(64 - counterDigits() * 6, 9);
+  display.setCursor(0, 8);
+  display.println("Steps:");
+  display.setCursor(60, 8);
   display.println(counter);
-  counter++;
+  display.setCursor(0, 16);
+  display.println("Calories:");
+  display.setCursor(60, 16);
+  display.println(counter * BURNT_CALORY_PER_STEP);
 }
 
 void drawJumping() {
@@ -676,9 +640,9 @@ void drawJumping() {
   display.println("Jumps");
   display.setTextColor(WHITE);
   if (doTask) {
-    display.setCursor(51, 25);
-    display.println("Stop");
-    updateCounter();
+    display.setCursor(49, 25);
+    display.println("Reset");
+    updateCounter(false);
   }
   else {
     display.setCursor(49, 25);
@@ -688,17 +652,35 @@ void drawJumping() {
 
   display.setTextSize(2);
   display.setCursor(64 - counterDigits() * 6, 9);
-  display.println(counter);
-  counter++;
+  display.println(counter / 2);
 }
 
-void updateCounter() {
+void updateCounter(bool pedometer) {
   mpu6050.update();
-  Serial.println(abs(correctGyroAngle(mpu6050.getAccY())) + abs(correctGyroAngle(mpu6050.getAccX())) + abs(correctGyroAngle(mpu6050.getAccZ())));
+
+  float thresholdHigh = pedometer ? PEDOMETER_THRESHOLD_HIGH : JUMPING_THRESHOLD_HIGH;
+  float thresholdLow = pedometer ? PEDOMETER_THRESHOLD_LOW : JUMPING_THRESHOLD_LOW;
+
+  float currAccSum = abs(correctGyroAngle(mpu6050.getAccY())) + abs(correctGyroAngle(mpu6050.getAccX())) + abs(correctGyroAngle(mpu6050.getAccZ()));
+  avgAccSum = avgAccSum * 0.95f + currAccSum * 0.05;
+  
+  if(currAccSum - avgAccSum > thresholdHigh && !overThreshold){
+    overThreshold = true;
+    counter++;
+    delay(50);
+  }
+  else if(currAccSum - avgAccSum < thresholdLow && overThreshold){
+    overThreshold = false;
+    delay(50);
+  }
+  
+  Serial.print(avgAccSum);
+  Serial.print(";");
+  Serial.println(currAccSum);
 }
 
 int counterDigits() {
-  int n = counter;
+  int n = counter / 2;
   int count = 0;
   while (n != 0)
   {
@@ -719,6 +701,12 @@ void drawMyDoorLock(){
   display.setCursor(0, 12);
   display.println("Status:");
   if (doTask){
+    if(!previousDoTask){
+      previousDoTask = true;
+      ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
+      ESP_SERIAL.print(MQTT_TOPIC_MY_DOOR_LOCK);
+      ESP_SERIAL.println("\",\"message\":1}");
+    }
     if(millis() - timeOfLastClick > DOOR_LOCK_OPEN){
       doTask = !doTask;
     }
@@ -726,6 +714,7 @@ void drawMyDoorLock(){
     display.println("Unlocked");
   }
   else{
+    previousDoTask = false;
     display.setCursor(46, 12);
     display.println("Locked");
     display.setCursor(52, 24);
@@ -745,6 +734,12 @@ void drawIrrigatingMimosa(){
   display.setCursor(86, 12);
   display.println("12345");
   if (doTask){
+    if(!previousDoTask){
+      previousDoTask = true;
+      ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
+      ESP_SERIAL.print(MQTT_TOPIC_IRRIGATING_MIMOSA);
+      ESP_SERIAL.println("\",\"message\":1}");
+    }
     if(millis() - timeOfLastClick > DOOR_LOCK_OPEN){
       doTask = !doTask;
     }
@@ -752,6 +747,7 @@ void drawIrrigatingMimosa(){
     display.println("Irrigating...");
   }
   else{
+    previousDoTask = false;
     display.setCursor(25, 24);
     display.println("Do irrigation");
   }
@@ -767,12 +763,24 @@ void drawKitchenSinkLights(){
   display.setCursor(0, 12);
   display.println("Status:");
   if (doTask){
+    if(!previousDoTask){
+      previousDoTask = true;
+      ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
+      ESP_SERIAL.print(MQTT_TOPIC_KITCHEN_SINK_LIGHTS);
+      ESP_SERIAL.println("\",\"message\":1}");
+    }
     display.setCursor(46, 12);
     display.println("On");
     display.setCursor(40, 24);
     display.println("Turn off");
   }
   else{
+    if(previousDoTask){
+      previousDoTask = false;
+      ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
+      ESP_SERIAL.print(MQTT_TOPIC_KITCHEN_SINK_LIGHTS);
+      ESP_SERIAL.println("\",\"message\":0}");
+    }
     display.setCursor(46, 12);
     display.println("Off");
     display.setCursor(43, 24);
@@ -787,31 +795,55 @@ void drawControl(){
   display.setCursor(43, 0);
   display.println("Control");
 
+  if(doTask){
+    mpu6050.update();
+  }
+
   switch(selectedRobotArmSegment){
     case BASE:
-      if(doTask && selectedRobotArmSegment == BASE)
+      if(doTask && selectedRobotArmSegment == BASE){
+        robotBaseAngle = robotBaseAngle * 0.95 + correctGyroAngle(mpu6050.getAccAngleX()) * 0.05;
         display.fillRect(0, 9, 32, 14, WHITE);
-      else
+      } else
         display.drawRect(0, 9, 32, 14, WHITE);
       break;
     case LOWER_JOINT:
-      if(doTask && selectedRobotArmSegment == LOWER_JOINT)
+      if(doTask && selectedRobotArmSegment == LOWER_JOINT){
+        robotLowerJointAngle = robotLowerJointAngle * 0.95 + correctGyroAngle(mpu6050.getAccAngleX()) * 0.05;
         display.fillRect(32, 9, 32, 14, WHITE);
-      else
+      } else
         display.drawRect(32, 9, 32, 14, WHITE);
       break;
     case UPPER_JOINT:
-      if(doTask && selectedRobotArmSegment == UPPER_JOINT)
+      if(doTask && selectedRobotArmSegment == UPPER_JOINT){
+        robotUpperJointAngle = robotUpperJointAngle * 0.95 + correctGyroAngle(mpu6050.getAccAngleX()) * 0.05;
         display.fillRect(64, 9, 32, 14, WHITE);
-      else
+      } else
         display.drawRect(64, 9, 32, 14, WHITE);
       break;
     case GRIPPER:
-      if(doTask && selectedRobotArmSegment == GRIPPER)
+      if(doTask && selectedRobotArmSegment == GRIPPER){
+        robotGripper = robotGripper * 0.95 + correctGyroAngle(mpu6050.getAccAngleX())  * 0.05;
         display.fillRect(96, 9, 32, 14, WHITE);
-      else
+      } else
         display.drawRect(96, 9, 32, 14, WHITE);
       break;
+  }
+  
+  if(doTask){
+    previousDoTask = false;
+    ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
+    ESP_SERIAL.print(MQTT_TOPIC_ROBOT_CONTROL);
+    ESP_SERIAL.print("\",\"message\":{");
+    ESP_SERIAL.print("\"base_angle\":");
+    ESP_SERIAL.print(robotBaseAngle);
+    ESP_SERIAL.print(",\"lower_joint_angle\":");
+    ESP_SERIAL.print(robotLowerJointAngle);
+    ESP_SERIAL.print(",\"upper_joint_angle\":");
+    ESP_SERIAL.print(robotUpperJointAngle);
+    ESP_SERIAL.print(",\"gripper_state\":");
+    ESP_SERIAL.print(robotGripper > 0);
+    ESP_SERIAL.println("}}");
   }
   
   display.setTextColor(doTask && selectedRobotArmSegment == BASE ? BLACK : WHITE);
@@ -906,4 +938,90 @@ void drawAboutApp() {
   display.setTextColor(WHITE);
   display.setCursor(0, 8);
   display.println("Creator: Balazs Simon\nWeb:\nhackster.io/Abysmal");
+}
+
+void enableCharging(){//Configure the Power-Management (Power-Hold)
+  MAX77650_init();
+
+  //Baseline Initialization following rules printed in MAX77650 Programmres Guide Chapter 4 Page 5
+  if (MAX77650_debug) Serial.print("Set Main Bias to normal Mode: ");
+  if (MAX77650_setSBIA_LPM(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //Set Main Bias to normal Mode
+  if (MAX77650_debug) Serial.print("Set On/Off-Button to push-button-mode: ");
+  if (MAX77650_setnEN_MODE(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //set on/off-button to push-button
+  if (MAX77650_debug) Serial.print("Set nEN input debounce time to 30ms: ");
+  if (MAX77650_setDBEN_nEN(true)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //set on/off-button to push-button
+  if (MAX77650_debug) Serial.print("Comparing part-numbers: ");
+  if (MAX77650_getDIDM() == PMIC_partnumber) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //checking partnumbers
+  if (MAX77650_debug) Serial.print("Checking OTP options: ");
+  if (MAX77650_getCID() != MAX77650_CID) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //checking OTP options
+  //Values for NTC beta=3800K; Battery-values are for 1s 303759 with 600mAh
+  if (MAX77650_debug) Serial.print("Set the VCOLD JEITA Temperature Threshold to 0°C: ");
+  if (MAX77650_setTHM_COLD(2)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //0°C
+  if (MAX77650_debug) Serial.print("Set the VCOOL JEITA Temperature Threshold to 15°C: ");
+  if (MAX77650_setTHM_COOL(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //15°C
+  if (MAX77650_debug) Serial.print("Set the VWARM JEITA Temperature Threshold to 45°C: ");
+  if (MAX77650_setTHM_WARM(2)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //45°C
+  if (MAX77650_debug) Serial.print("Set the VHOT JEITA Temperature Threshold to 60°C: ");
+  if (MAX77650_setTHM_HOT(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //60°C
+  if (MAX77650_debug) Serial.print("Set CHGIN regulation voltage to 4.00V: ");
+  if (MAX77650_setVCHGIN_MIN(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //
+  if (MAX77650_debug) Serial.print("Set CHGIN Input Current Limit to 300mA: ");
+  if (MAX77650_setICHGIN_LIM(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //300mA
+  if (MAX77650_debug) Serial.print("Set the prequalification charge current to 10%: ");
+  if (MAX77650_setI_PQ(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //10%
+  if (MAX77650_debug) Serial.print("Set Battery prequalification voltage threshold to 3.0V: ");
+  if (MAX77650_setCHG_PQ(7)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");        //3.0V
+  if (MAX77650_debug) Serial.print("Set Charger Termination Current to 15% of of fast charge current: ");
+  if (MAX77650_setI_TERM(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");        //15%
+  if (MAX77650_debug) Serial.print("Set Topoff timer value to 0 minutes: ");
+  if (MAX77650_setT_TOPOFF(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");      //0 minutes
+  if (MAX77650_debug) Serial.print("Set the die junction temperature regulation point to 60°C: ");
+  if (MAX77650_setTJ_REG(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");        //60°C Tj
+  if (MAX77650_debug) Serial.print("Set System voltage regulation to 4.50V: ");
+  if (MAX77650_setVSYS_REG(0x10)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //Vsys=4.5V
+  if (MAX77650_debug) Serial.print("Set the fast-charge constant current value to 300mA: ");
+  if (MAX77650_setCHG_CC(0x3f)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //300mA
+  if (MAX77650_debug) Serial.print("Set the fast-charge safety timer to 3h: ");
+  if (MAX77650_setT_FAST_CHG(1)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //3h
+  if (MAX77650_debug) Serial.print("Set IFAST-CHG_JEITA to 300mA: ");
+  if (MAX77650_setCHG_CC_JEITA(0x3f)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //300mA
+  if (MAX77650_debug) Serial.print("Set fast-charge battery regulation voltage to 4.20V: ");
+  if (MAX77650_setCHG_CV(0x18)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //4.20V
+  if (MAX77650_debug) Serial.print("Set USB not in power down: ");
+  if (MAX77650_setUSBS(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");      //USBS not suspended
+  if (MAX77650_debug) Serial.print("Set the modified VFAST-CHG to 4.00V: ");
+  if (MAX77650_setCHG_CV_JEITA(0x10)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //4.0V
+  if (MAX77650_debug) Serial.print("Selects the battery discharge current full-scale current value to 300mA: ");
+  if (MAX77650_setIMON_DISCHG_SCALE(0x0A)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //300mA
+  if (MAX77650_debug) Serial.print("Disable the analog MUX output: ");
+  if (MAX77650_setMUX_SEL(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //AMUX=off
+  if (MAX77650_debug) Serial.print("Set the Charger to Enable: ");
+  if (MAX77650_setCHG_EN(true)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");  //enable the Charger
+  if (MAX77650_debug) Serial.print("Disable SIMO Buck-Boost Channel 0 Active-Discharge: ");
+  if (MAX77650_setADE_SBB0(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Disable SIMO Buck-Boost Channel 1 Active-Discharge: ");
+  if (MAX77650_setADE_SBB1(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Disable SIMO Buck-Boost Channel 2 Active-Discharge: ");
+  if (MAX77650_setADE_SBB1(false)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost to maximum drive strength: ");
+  if (MAX77650_setDRV_SBB(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 0 Peak Current Limit to 500mA: ");
+  if (MAX77650_setIP_SBB0(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 1 Peak Current Limit to 500mA: ");
+  if (MAX77650_setIP_SBB1(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 2 Peak Current Limit to 500mA: ");
+  if (MAX77650_setIP_SBB2(0b00)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Set SIMO Buck-Boost Channel 2 to on while in stand-by-mode: ");
+  if (MAX77650_setEN_SBB2(0b110)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Initialize Global Interrupt Mask Register: ");
+  if (MAX77650_setINT_M_GLBL(0x0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+  if (MAX77650_debug) Serial.print("Initialize Charger Interrupt Mask Register: ");
+  if (MAX77650_setINT_M_CHG(0x0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");
+
+  //Read and clear Interrupt Registers
+  MAX77650_getINT_GLBL();
+  MAX77650_getINT_CHG();
+  MAX77650_getERCFLAG();
+
+  if (MAX77650_debug) Serial.println("End Initialisation of MAX77650");
 }
