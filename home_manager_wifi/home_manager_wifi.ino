@@ -46,7 +46,7 @@ void reconnect() {
   while (!client.connected()) {
     if (DEBUG) Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP8266Client")) {
+    if (client.connect("Home Manager")) {
       if (DEBUG) Serial.println("connected");
       // Once connected, publish an announcement...
       // client.publish("my_door_lock", "hello world");
