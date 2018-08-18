@@ -68,6 +68,11 @@ char * robotArmSubMenu[] = {
   "View sensor data"
 };
 
+#define DINOSAUR        0
+char * gamesSubMenu[] = {
+  "Dinosaur"
+};
+
 #define BATTERY         0
 #define ABOUT           1
 char * otherSubMenu[] = {
@@ -87,16 +92,16 @@ char * robotArmSegments[] = {
 };
 int selectedRobotArmSegment = BASE;
 
-#define DOOR_LOCK_OPEN  3000                              // the door stays open for 3 seconds
-#define EMAIL_CONTACT   "test@example.com"        // e-mail address of your emergency contact
-#define EMERGENCY_MSG   "I need help, please come ASAP!"  // emergency email message
-#define FALL_MSG        "I fell, please help!"            // automatic message in case of the owner fell
+#define DOOR_LOCK_OPEN        3000                              // the door stays open for 3 seconds
+#define EMAIL_CONTACT         "test@example.com"        // e-mail address of your emergency contact
+#define EMERGENCY_MSG         "I need help, please come ASAP!"  // emergency email message
+#define FALL_MSG              "I fell, please help!"            // automatic message in case of the owner fell
 
 #define FALLING_THRESHOLD         539.8f
 
 #define PEDOMETER_THRESHOLD_HIGH  0.65f
 #define PEDOMETER_THRESHOLD_LOW   -0.65f
-#define BURNT_CALORY_PER_STEP     0.05f
+#define BURNT_CALORIES_PER_STEP   0.05f
 #define JUMPING_THRESHOLD_HIGH    0.6f
 #define JUMPING_THRESHOLD_LOW     -0.8f
 float avgAccSum = 500.0f;
@@ -120,8 +125,28 @@ int currentMenuPointInSubMenu = 0;
 
 bool displayEnabled = true;
 
-long timeOfLastClick;
+long timeOfLastClick = 0;
 int displaySleepIn = 60000; // millis
+
+// Dinosaur game config
+#define GAME_SPEED      150
+#define MAX_GAME_SPEED  15
+#define RUNNING_SPEED   50
+unsigned long scoreUpdate = 0;
+int speedingUp = 0;
+bool leftLeg = false;
+long runningTimePassed = 0;
+#define JUMP_SPEED      10.0f
+#define GRAVITY         0.5f
+float verticalSpeed = 0;
+int dinoPosX = 8;
+int dinoPosy = 17;
+int dirtContainer[10];
+int cactus1PosX;
+int cactus2PosX;
+int cactus1bmp;
+int cactus2bmp;
+bool gameover = false;
 
 static const unsigned char PROGMEM hackster_logo_bmp[] =
 { B00000000, B00011111, B11100000, B00000000,
@@ -210,6 +235,99 @@ static const unsigned char PROGMEM right_arrow_bmp[] =
   B00110000
 };
 
+static const unsigned char PROGMEM dinosaur_body_bmp[] =
+{
+  B00000000, B00111110,
+  B00000000, B01011111,
+  B00000000, B01111111,
+  B00000000, B01110000,
+  B01000000, B01111110,
+  B01000000, B11110000,
+  B01100001, B11110000,
+  B01110011, B11111100,
+  B00111111, B11110100,
+  B00111111, B11110000,
+  B00011111, B11110000,
+  B00000111, B11100000
+};
+
+static const unsigned char PROGMEM dinosaur_legs_right_bmp[] =
+{
+  B01100100,
+  B00110100,
+  B00000110
+};
+
+static const unsigned char PROGMEM dinosaur_legs_left_bmp[] =
+{
+  B01001100,
+  B01000110,
+  B01100000
+};
+
+static const unsigned char PROGMEM dinosaur_legs_jump_bmp[] =
+{
+  B01000100,
+  B01000100,
+  B01100110
+};
+
+static const unsigned char PROGMEM dirt1_bmp[] =
+{
+  B11100000, B00000001,
+  B01000001, B00000000,
+  B00000000, B00000100
+};
+
+static const unsigned char PROGMEM dirt2_bmp[] =
+{
+  B00000001, B00000000,
+  B10000000, B00000000,
+  B00000000, B00000001
+};
+
+static const unsigned char PROGMEM dirt3_bmp[] =
+{
+  B10000000, B00000000,
+  B00000000, B00000011,
+  B00001000, B00000000
+};
+
+static const unsigned char PROGMEM cactus1_bmp[] =
+{
+  B00000001, B00000000,
+  B00000011, B10000000,
+  B00000011, B10011000,
+  B00010011, B10011000,
+  B00111011, B10011000,
+  B00111011, B10111000,
+  B00111011, B11110000,
+  B00011111, B11100000,
+  B00001111, B10000000,
+  B00000111, B10000000,
+  B00000011, B10000000,
+  B00000011, B10000000,
+  B00000011, B10000000,
+  B00000011, B10000000
+};
+
+static const unsigned char PROGMEM cactus2_bmp[] =
+{
+  B00111000,
+  B00111000,
+  B00111011,
+  B10111011,
+  B10111011,
+  B10111011,
+  B01111011,
+  B00111111,
+  B00111110,
+  B00111000,
+  B00111000,
+  B00111000,
+  B00111000
+};
+
 #if (SSD1306_LCDHEIGHT != 32)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
@@ -270,9 +388,9 @@ void setup()   {
 
 void drawSplashScreen(void) {
   // drawing Hackster logo
-  display.drawBitmap(0, 2,  hackster_logo_bmp, 32, 28, 1);
+  display.drawBitmap(0, 2, hackster_logo_bmp, 32, 28, 1);
   // drawing Maxim logo
-  display.drawBitmap(96, 2,  maxim_logo_bmp, 32, 28, 1);
+  display.drawBitmap(96, 2, maxim_logo_bmp, 32, 28, 1);
 }
 
 void loop() {
@@ -326,6 +444,10 @@ void loop() {
       if (currentMenuPointInSubMenu == CONTROL && !doTask) {
         selectedRobotArmSegment = selectedRobotArmSegment != GRIPPER ? selectedRobotArmSegment + 1 : BASE;
       }
+      if (currentMenuPointInSubMenu == DINOSAUR && doTask && verticalSpeed == 0.0f) {
+        // 0.0f will happen when you set it by hand
+        verticalSpeed = JUMP_SPEED;
+      }
     }
   }
   else if (buttonUpdate(BACK_BUTTON, 3)) {
@@ -373,11 +495,11 @@ bool buttonUpdate(int buttonId, int previousStateId) {
   int currentButtonState = digitalRead(buttonId);
   bool needsUpdate = false;
   if (currentButtonState && !previousButtonState[previousStateId]) {
-    delay(50);
+    delay(25);
     needsUpdate = true;
   }
   else if (!currentButtonState && previousButtonState[previousStateId]) {
-    delay(50);
+    delay(25);
   }
   previousButtonState[previousStateId] = currentButtonState;
   return needsUpdate;
@@ -438,6 +560,9 @@ void refreshSubMenu() {
     case ROBOT_ARM:
       drawSubMenu(robotArmSubMenu);
       break;
+    case GAMES:
+      drawSubMenu(gamesSubMenu);
+      break;
     case OTHER:
       drawSubMenu(otherSubMenu);
       break;
@@ -477,6 +602,8 @@ int getLastElementOfCurrentSubMenu() {
       return KITCHEN_SINK_LIGHTS;
     case ROBOT_ARM:
       return VIEW_SENSOR;
+    case GAMES:
+      return DINOSAUR;
     case OTHER:
       return ABOUT;
     default:
@@ -520,6 +647,11 @@ void refreshApplication() {
       }
       else if (currentMenuPointInSubMenu == VIEW_SENSOR) {
         drawViewSensorData();
+      }
+      break;
+    case GAMES:
+      if (currentMenuPointInSubMenu == DINOSAUR) {
+        drawDinosaur();
       }
       break;
     case OTHER:
@@ -612,14 +744,18 @@ void drawPedometer() {
   display.println("Pedometer");
   display.setTextColor(WHITE);
   if (doTask) {
-    display.setCursor(49, 25);
-    display.println("Reset");
+    if (!previousDoTask){
+      counter = 0;
+      previousDoTask = true;
+    }
+    display.setCursor(52, 25);
+    display.println("Stop");
     updateCounter(true);
   }
   else {
+    previousDoTask = false;
     display.setCursor(49, 25);
     display.println("Start");
-    counter = 0;
   }
 
   display.setCursor(0, 8);
@@ -629,7 +765,7 @@ void drawPedometer() {
   display.setCursor(0, 16);
   display.println("Calories:");
   display.setCursor(60, 16);
-  display.println(counter * BURNT_CALORY_PER_STEP);
+  display.println(counter * BURNT_CALORIES_PER_STEP);
 }
 
 void drawJumping() {
@@ -640,14 +776,18 @@ void drawJumping() {
   display.println("Jumps");
   display.setTextColor(WHITE);
   if (doTask) {
-    display.setCursor(49, 25);
-    display.println("Reset");
+    if (!previousDoTask){
+      counter = 0;
+      previousDoTask = true;
+    }
+    display.setCursor(52, 25);
+    display.println("Stop");
     updateCounter(false);
   }
   else {
+    previousDoTask = false;
     display.setCursor(49, 25);
     display.println("Start");
-    counter = 0;
   }
 
   display.setTextSize(2);
@@ -907,6 +1047,168 @@ float correctGyroAngle(float sensorAngle) {
   else
     sensorAngle += 180;
   return sensorAngle;
+}
+
+void drawDinosaur() {
+  delay(1);
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(58, 0);
+  display.println("Score:");
+  display.setCursor(96, 0);
+  display.println(getGameScore());
+  if (doTask) {
+    if (!previousDoTask){
+      counter = 0;
+      previousDoTask = true;
+      speedingUp = 0;
+      randomSeed(millis());
+      dinoPosy = 17;
+      verticalSpeed = 0;
+      for(int i = 0; i < 10; i++){
+        dirtContainer[i] = random(128) - 8;
+      }
+      cactus1bmp = random(4);
+      cactus2bmp = random(4);
+      cactus1PosX = 256;
+      cactus2PosX = -20;
+      gameover = false;
+    }
+
+    if (!gameover){
+      for(int i = 0; i < 10; i++){
+        dirtContainer[i] -= 2;
+        if(dirtContainer[i] < -8)
+          dirtContainer[i] = 128;
+      }
+
+      cactus1PosX -= 2;
+      cactus2PosX -= 2;
+      if(cactus1PosX < random(25) - 15){
+        cactus2PosX = cactus1PosX;
+        cactus2bmp = cactus1bmp,
+        cactus1PosX = 128;
+        cactus1bmp = random(4);
+      }
+      
+      if (millis() - scoreUpdate > GAME_SPEED - speedingUp){
+        scoreUpdate = millis();
+        if (counter < 99999){
+          counter++;
+        }
+        if(GAME_SPEED - speedingUp > MAX_GAME_SPEED){
+          speedingUp = counter / 10;
+        }
+      }
+  
+      if (dinoPosy < 17 || verticalSpeed > 0){
+        verticalSpeed -= GRAVITY;
+        dinoPosy -= verticalSpeed / 10;
+      }
+      else{
+        verticalSpeed = 0.0f;
+        dinoPosy = 17;
+      }
+
+      if (dinoPosy > 10 && (abs(cactus1PosX - dinoPosX - 8) < 6 || abs(cactus2PosX - dinoPosX - 8) < 6 ))
+        gameover = true;
+    }
+    else {
+      display.setTextSize(1);
+      display.setTextColor(BLACK, WHITE);
+      display.setCursor(52, 8);
+      display.println("GAME");
+      display.setCursor(52, 16);
+      display.println("OVER");
+      display.setTextColor(WHITE);
+    }
+
+    display.drawLine(0, 26, display.width(), 26, WHITE);
+
+    drawDino();
+    drawDirt();
+    drawCactuses();
+  }
+  else {
+    previousDoTask = false;
+    display.setCursor(49, 25);
+    display.println("Start");
+  }
+}
+
+void drawDino() {
+  if (millis() - runningTimePassed > RUNNING_SPEED){
+    runningTimePassed = millis();
+    if (!gameover)
+      leftLeg = !leftLeg;
+  }
+  display.drawBitmap(dinoPosX, dinoPosy,  dinosaur_body_bmp, 16, 12, 1);
+  if(dinoPosy < 17){
+    display.drawBitmap(dinoPosX + 4, dinoPosy + 12,  dinosaur_legs_jump_bmp, 8, 3, 1);
+  }
+  else if(leftLeg){
+    display.drawBitmap(dinoPosX + 4, dinoPosy + 12,  dinosaur_legs_right_bmp, 8, 3, 1);
+  }
+  else{
+    display.drawBitmap(dinoPosX + 4, dinoPosy + 12,  dinosaur_legs_left_bmp, 8, 3, 1);
+  }
+}
+
+void drawDirt(){
+  for(int i = 0; i < 10; i++){
+    if(i % 3 == 0)
+      display.drawBitmap(dirtContainer[i], 28,  dirt1_bmp, 16, 3, 1);
+    else if(i % 3 == 1)
+      display.drawBitmap(dirtContainer[i], 28,  dirt2_bmp, 8, 3, 1);
+    else 
+      display.drawBitmap(dirtContainer[i], 28,  dirt3_bmp, 16, 3, 1);
+  }
+}
+
+void drawCactuses(){
+  switch(cactus1bmp){
+    case 0:
+      display.drawBitmap(cactus1PosX, 18, cactus1_bmp, 16, 14, 1);
+      break;
+    case 1:
+      display.drawBitmap(cactus1PosX, 18, cactus2_bmp, 8, 13, 1);
+      break;
+    case 2:
+      display.drawBitmap(cactus1PosX - 5, 18, cactus1_bmp, 16, 14, 1);
+      display.drawBitmap(cactus1PosX + 6, 18, cactus2_bmp, 8, 13, 1);
+      break;
+    case 3:
+      display.drawBitmap(cactus1PosX - 5, 17, cactus2_bmp, 8, 13, 1);
+      display.drawBitmap(cactus1PosX + 6, 18, cactus2_bmp, 8, 13, 1);
+      break;
+  }
+  
+  switch(cactus2bmp){
+    case 0:
+      display.drawBitmap(cactus2PosX, 18, cactus1_bmp, 16, 14, 1);
+      break;
+    case 1:
+      display.drawBitmap(cactus2PosX, 18, cactus2_bmp, 8, 13, 1);
+      break;
+    case 2:
+      display.drawBitmap(cactus2PosX - 5, 18, cactus1_bmp, 16, 14, 1);
+      display.drawBitmap(cactus2PosX + 6, 18, cactus2_bmp, 8, 13, 1);
+      break;
+    case 3:
+      display.drawBitmap(cactus2PosX - 5, 17, cactus2_bmp, 8, 13, 1);
+      display.drawBitmap(cactus2PosX + 6, 18, cactus2_bmp, 8, 13, 1);
+      break;
+  }  
+}
+
+String getGameScore(){
+  String score = "00000";
+  score[4] = '0' + counter % 10;
+  score[3] = '0' + counter % 100 / 10;
+  score[2] = '0' + counter % 1000 / 100;
+  score[1] = '0' + counter % 10000 / 1000;
+  score[0] = '0' + counter % 100000 / 10000;
+  return score;
 }
 
 void drawBatteryInfo() {
