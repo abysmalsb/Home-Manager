@@ -5,6 +5,7 @@
 #include <MPU6050_tockn.h>
 #include <MAX77650-Arduino-Library.h>
 #include <MAX17055.h>
+#include <ArduinoJson.h>
 
 #define ESP_SERIAL      Serial0
 
@@ -127,6 +128,8 @@ bool displayEnabled = true;
 
 long timeOfLastClick = 0;
 int displaySleepIn = 60000; // millis
+
+float mimosaSoilHumidity = 0;
 
 // Dinosaur game config
 #define GAME_SPEED      150
@@ -476,6 +479,18 @@ void loop() {
   if ((displayEnabled && millis() - timeOfLastClick > displaySleepIn && currentLayer != APPLICATION)
     || (displayEnabled && millis() - timeOfLastClick > displaySleepIn * 10 && currentLayer == APPLICATION)) {
     switchOffDisplay();
+  }
+
+  if (ESP_SERIAL.available()) {
+    DynamicJsonBuffer jsonBuffer;
+    String message = ESP_SERIAL.readStringUntil('\n');
+    Serial.println(message);
+    JsonObject& root = jsonBuffer.parseObject(message);
+
+    String topic = root["topic"];
+    if(topic.equals("mimosa_humidity_level")){
+      mimosaSoilHumidity = atof(root["message"]);
+    }
   }
 }
 
@@ -872,7 +887,7 @@ void drawIrrigatingMimosa(){
   display.setCursor(0, 12);
   display.println("Soil moisture:");
   display.setCursor(86, 12);
-  display.println("12345");
+  display.println(mimosaSoilHumidity);
   if (doTask){
     if(!previousDoTask){
       previousDoTask = true;
