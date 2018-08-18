@@ -88,7 +88,7 @@ char * robotArmSegments[] = {
 int selectedRobotArmSegment = BASE;
 
 #define DOOR_LOCK_OPEN  3000                              // the door stays open for 3 seconds
-#define EMAIL_CONTACT   "emergency.contact@example.com"        // e-mail address of your emergency contact
+#define EMAIL_CONTACT   "test@example.com"        // e-mail address of your emergency contact
 #define EMERGENCY_MSG   "I need help, please come ASAP!"  // emergency email message
 #define FALL_MSG        "I fell, please help!"            // automatic message in case of the owner fell
 
@@ -834,16 +834,17 @@ void drawControl(){
     previousDoTask = false;
     ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
     ESP_SERIAL.print(MQTT_TOPIC_ROBOT_CONTROL);
-    ESP_SERIAL.print("\",\"message\":{");
-    ESP_SERIAL.print("\"base_angle\":");
+    ESP_SERIAL.print("\",\"message\":\"");
+    ESP_SERIAL.print(20);
+    ESP_SERIAL.print(" ");
     ESP_SERIAL.print(robotBaseAngle);
-    ESP_SERIAL.print(",\"lower_joint_angle\":");
+    ESP_SERIAL.print(" ");
     ESP_SERIAL.print(robotLowerJointAngle);
-    ESP_SERIAL.print(",\"upper_joint_angle\":");
+    ESP_SERIAL.print(" ");
     ESP_SERIAL.print(robotUpperJointAngle);
-    ESP_SERIAL.print(",\"gripper_state\":");
+    ESP_SERIAL.print(" ");
     ESP_SERIAL.print(robotGripper > 0);
-    ESP_SERIAL.println("}}");
+    ESP_SERIAL.println("\"}");
   }
   
   display.setTextColor(doTask && selectedRobotArmSegment == BASE ? BLACK : WHITE);
