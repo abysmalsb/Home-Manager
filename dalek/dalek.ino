@@ -1,9 +1,24 @@
+
+/**************************************************************
+ * This code controls the Home Manager's Dalek client,
+ * it can only say Exterminate when triggered. More info:
+ * https://www.hackster.io/Abysmal/home-manager-db49c6
+ * 
+ * This project is made for "Unleash Invisible Intelligence"
+ * contest on hackster.io. More info:
+ * https://www.hackster.io/contests/maximunleash
+ * 
+ * author: Balázs Simon
+ *
+ **************************************************************/
+
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
 #define DALEK_PIN         4   // D2
 #define ENABLE_TIME       15500
 
+// Update these with values suitable for your network.
 const char* ssid = "your ssid";
 const char* password = "password of your wifi network";
 const char* mqtt_server = "mqtt server address";

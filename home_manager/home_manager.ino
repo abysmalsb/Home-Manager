@@ -1,3 +1,17 @@
+/**************************************************************
+ * This code controls the Home Manager hardware, equipped
+ * with a MAX32620FTHR microcontroller. More info:
+ * https://www.hackster.io/Abysmal/home-manager-db49c6
+ * 
+ * This project is made for "Unleash Invisible Intelligence"
+ * contest on hackster.io. More info:
+ * https://www.hackster.io/contests/maximunleash
+ * 
+ * author: Balázs Simon
+ *
+ **************************************************************/
+
+
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -20,10 +34,12 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define MAX77650_debug  true
 #define MAX77650_PHLD   P2_2   //Pin 18 -> connected to MAX77650 power hold input pin (A1)
 
+// Menu levels
 #define MAIN_MENU       0
 #define SUB_MENU        1
 #define APPLICATION     2
 
+// Applications/functions
 #define SAFETY          0
 #define SPORT           1
 #define HOME            2
@@ -95,6 +111,7 @@ char * robotArmSegments[] = {
 };
 int selectedRobotArmSegment = BASE;
 
+// Configure your device
 #define DOOR_LOCK_OPEN        3000                              // the door stays open for 3 seconds
 #define EMAIL_CONTACT         "test@example.com"                // e-mail address of your emergency contact
 #define EMERGENCY_MSG         "I need help, please come ASAP!"  // emergency email message
@@ -102,6 +119,7 @@ int selectedRobotArmSegment = BASE;
 
 #define FALLING_THRESHOLD         539.8f
 
+// Sport values
 #define PEDOMETER_THRESHOLD_HIGH  0.65f
 #define PEDOMETER_THRESHOLD_LOW   -0.65f
 #define BURNT_CALORIES_PER_STEP   0.05f
@@ -110,17 +128,20 @@ int selectedRobotArmSegment = BASE;
 float avgAccSum = 500.0f;
 bool overThreshold = false;
 
+// MQTT topics
 #define MQTT_TOPIC_MY_DOOR_LOCK         "my_door_lock"
 #define MQTT_TOPIC_IRRIGATING_MIMOSA    "irrigating_mimosa"
 #define MQTT_TOPIC_KITCHEN_SINK_LIGHTS  "kitchen_sink_lights"
 #define MQTT_TOPIC_ROBOT_CONTROL        "robot_control"
 #define MQTT_TOPIC_DALEK                "dalek"
 
+// Default angles for the robot arm
 float robotBaseAngle = 90.0f;
 float robotLowerJointAngle = 90.0f;
 float robotUpperJointAngle = 90.0f;
 float robotGripper = 90.0f;
 
+// previous states of the buttons (needed for edge control)
 int previousButtonState[] =  {LOW, LOW, LOW, LOW};
 
 int currentLayer = MAIN_MENU;
@@ -154,6 +175,7 @@ int cactus1bmp;
 int cactus2bmp;
 bool gameover = false;
 
+// Hackster.io logo for the splash screen
 static const unsigned char PROGMEM hackster_logo_bmp[] =
 { B00000000, B00011111, B11100000, B00000000,
   B00000000, B01111111, B11111000, B00000000,
@@ -185,6 +207,7 @@ static const unsigned char PROGMEM hackster_logo_bmp[] =
   B00000000, B00011111, B11100000, B00000000
 };
 
+// Maxim Integrated logo for the splash screen
 static const unsigned char PROGMEM maxim_logo_bmp[] =
 { B00000000, B00000011, B11111100, B00000000,
   B00000000, B00001111, B11111111, B00000000,
@@ -216,6 +239,7 @@ static const unsigned char PROGMEM maxim_logo_bmp[] =
   B00000000, B00000011, B11111100, B00000000
 };
 
+// Left arrow, mainly for navigating in menus
 static const unsigned char PROGMEM left_arrow_bmp[] =
 { B00001100,
   B00011000,
@@ -228,6 +252,7 @@ static const unsigned char PROGMEM left_arrow_bmp[] =
   B00001100
 };
 
+// right arrow, mainly for navigating in menus
 static const unsigned char PROGMEM right_arrow_bmp[] =
 {
   B00110000,
@@ -241,6 +266,7 @@ static const unsigned char PROGMEM right_arrow_bmp[] =
   B00110000
 };
 
+// dinosaur body, without legs (legs are animated, thus separated)
 static const unsigned char PROGMEM dinosaur_body_bmp[] =
 {
   B00000000, B00111110,
@@ -257,6 +283,7 @@ static const unsigned char PROGMEM dinosaur_body_bmp[] =
   B00000111, B11100000
 };
 
+// dinosaur left leg on ground, right leg in the air
 static const unsigned char PROGMEM dinosaur_legs_right_bmp[] =
 {
   B01100100,
@@ -264,6 +291,7 @@ static const unsigned char PROGMEM dinosaur_legs_right_bmp[] =
   B00000110
 };
 
+// dinosaur left right on ground, left leg in the air
 static const unsigned char PROGMEM dinosaur_legs_left_bmp[] =
 {
   B01001100,
@@ -271,6 +299,7 @@ static const unsigned char PROGMEM dinosaur_legs_left_bmp[] =
   B01100000
 };
 
+// dinosaur both leg in the air (jumping)
 static const unsigned char PROGMEM dinosaur_legs_jump_bmp[] =
 {
   B01000100,
@@ -278,6 +307,7 @@ static const unsigned char PROGMEM dinosaur_legs_jump_bmp[] =
   B01100110
 };
 
+// dirt, type 1 (dino game)
 static const unsigned char PROGMEM dirt1_bmp[] =
 {
   B11100000, B00000001,
@@ -285,6 +315,7 @@ static const unsigned char PROGMEM dirt1_bmp[] =
   B00000000, B00000100
 };
 
+// dirt, type 2 (dino game)
 static const unsigned char PROGMEM dirt2_bmp[] =
 {
   B00000001, B00000000,
@@ -292,6 +323,7 @@ static const unsigned char PROGMEM dirt2_bmp[] =
   B00000000, B00000001
 };
 
+// dirt, type 3 (dino game)
 static const unsigned char PROGMEM dirt3_bmp[] =
 {
   B10000000, B00000000,
@@ -299,6 +331,7 @@ static const unsigned char PROGMEM dirt3_bmp[] =
   B00001000, B00000000
 };
 
+// cactus type 1 (dino game)
 static const unsigned char PROGMEM cactus1_bmp[] =
 {
   B00000001, B00000000,
@@ -317,6 +350,7 @@ static const unsigned char PROGMEM cactus1_bmp[] =
   B00000011, B10000000
 };
 
+// cactus type 2 (dino game)
 static const unsigned char PROGMEM cactus2_bmp[] =
 {
   B00111000,
@@ -357,7 +391,7 @@ void setup()   {
   enableCharging();
 
   Wire2.begin();
-  sensor.setCapacity(260);
+  sensor.setCapacity(260);    // The battery is 260mAh
 
   pinMode(LEFT_BUTTON, INPUT);
   pinMode(ENTER_BUTTON, INPUT);
@@ -393,6 +427,7 @@ void setup()   {
   timeOfLastClick = millis();
 }
 
+// Needed for sensor init
 void drawSplashScreen(void) {
   // drawing Hackster logo
   display.drawBitmap(0, 2, hackster_logo_bmp, 32, 28, 1);
@@ -485,6 +520,7 @@ void loop() {
     switchOffDisplay();
   }
 
+  // Message arraived from the Broker, currently it can only be mimosa moisture update
   if (ESP_SERIAL.available()) {
     DynamicJsonBuffer jsonBuffer;
     String message = ESP_SERIAL.readStringUntil('\n');
@@ -498,17 +534,20 @@ void loop() {
   }
 }
 
+// Switching off display after some time to save power.
 void switchOffDisplay() {
   displayEnabled = false;
   display.clearDisplay();
   display.display();
 }
 
+// Switch on display when something is happened
 void switchOnDisplay() {
   displayEnabled = true;
   refreshMenu();
 }
 
+// Low level button handling
 bool buttonUpdate(int buttonId, int previousStateId) {
 
   int currentButtonState = digitalRead(buttonId);
@@ -524,6 +563,7 @@ bool buttonUpdate(int buttonId, int previousStateId) {
   return needsUpdate;
 }
 
+// Updating the menu, drawing is based on the current layer
 void refreshMenu() {
   display.clearDisplay();
 
@@ -543,6 +583,7 @@ void refreshMenu() {
   display.display();
 }
 
+// Should never happen. I used only during development when there were unimplemented views
 void drawError() {
   display.setTextSize(2);
   display.setTextColor(WHITE);
@@ -611,6 +652,7 @@ void drawSubMenu(char * subMenu[]) {
   display.println(subMenu[currentMenuPointInSubMenu]);
 }
 
+// To handle more or less dinamzcally the pages
 int getLastElementOfCurrentSubMenu() {
   switch (currentMenuPointInMainMenu) {
     case SAFETY:
@@ -631,6 +673,7 @@ int getLastElementOfCurrentSubMenu() {
   }
 }
 
+// updating apps, too
 void refreshApplication() {
   switch (currentMenuPointInMainMenu) {
     case SAFETY:
@@ -689,6 +732,7 @@ void refreshApplication() {
   }
 }
 
+// Emergency email sending function
 void drawCallForHelp(){
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -722,6 +766,8 @@ void drawCallForHelp(){
   }
 }
 
+// Fall detection. If enabled it will send an e-mail to the contact about this event
+// It uses the accelerometer
 void drawFallDetection() {
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -756,6 +802,7 @@ void drawFallDetection() {
   }
 }
 
+// Step calculating. It uses the IMU
 void drawPedometer() {
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -788,6 +835,7 @@ void drawPedometer() {
   display.println(counter * BURNT_CALORIES_PER_STEP);
 }
 
+// Jump calculating. It uses the IMU
 void drawJumping() {
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -839,6 +887,8 @@ void updateCounter(bool pedometer) {
   Serial.println(currAccSum);
 }
 
+// The number of digits is needed in cases when you want to align
+// the value of counter to middle or right
 int counterDigits() {
   int n = counter / 2;
   int count = 0;
@@ -850,7 +900,8 @@ int counterDigits() {
   return count != 0 ? count : 1;
 }
 
-
+// It will send MQTT message '1' to 'my_door_lock' topic
+// That device is the one with the magnetic sensor
 void drawMyDoorLock(){
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -882,6 +933,8 @@ void drawMyDoorLock(){
   }
 }
 
+// MQTT message to the mimosa, but it also receives soil moisture status from the plant
+// It is displayed on the UI
 void drawIrrigatingMimosa(){
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -913,6 +966,7 @@ void drawIrrigatingMimosa(){
   }
 }
 
+// Unlike the other MQTT devices, it can be turned off, not just on
 void drawKitchenSinkLights(){
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -948,6 +1002,7 @@ void drawKitchenSinkLights(){
   }
 }
 
+// here Dalek is a plastic figure that says Exterminate when triggered
 void drawDalek(){
   if (doTask){
     if(!previousDoTask){
@@ -996,6 +1051,7 @@ void drawDalek(){
   }
 }
 
+// Robot Arm control. Speed is hardcoded here.
 void drawControl(){
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -1090,6 +1146,7 @@ void drawControl(){
   }
 }
 
+// Doesn't really have a purpose, it was used for experimenting and testing
 void drawViewSensorData() {
   mpu6050.update();
   display.setTextSize(1);
@@ -1116,7 +1173,7 @@ void drawViewSensorData() {
   display.println(mpu6050.getGyroAngleY());
 }
 
-// The sensor is upside down, the angles needs to be flipped
+// The sensor is upside down, the angles needs to be flipped, too
 float correctGyroAngle(float sensorAngle) {
   if (sensorAngle > 0)
     sensorAngle -= 180;
@@ -1125,6 +1182,8 @@ float correctGyroAngle(float sensorAngle) {
   return sensorAngle;
 }
 
+// Dinosaur is a game, based on the famous Chrome game, 
+// T-Rex (I guess that is what they call it)
 void drawDinosaur() {
   delay(1);
   display.setTextSize(1);
@@ -1212,6 +1271,8 @@ void drawDinosaur() {
   }
 }
 
+// The dino has a body, that can move up or down, and 3 types of possible legs 
+// (left-right, right-left for walking and another for jumping)
 void drawDino() {
   if (millis() - runningTimePassed > RUNNING_SPEED){
     runningTimePassed = millis();
@@ -1230,6 +1291,7 @@ void drawDino() {
   }
 }
 
+// Dirt is just a design element, helps you feel movement. It has no practical use 
 void drawDirt(){
   for(int i = 0; i < 10; i++){
     if(i % 3 == 0)
@@ -1241,6 +1303,7 @@ void drawDirt(){
   }
 }
 
+// Cactuses can kill/stop the dino, resulting in a game over
 void drawCactuses(){
   switch(cactus1bmp){
     case 0:
@@ -1277,6 +1340,7 @@ void drawCactuses(){
   }  
 }
 
+// Always forcing 5 digits number, with leading zeros.
 String getGameScore(){
   String score = "00000";
   score[4] = '0' + counter % 10;
@@ -1287,6 +1351,8 @@ String getGameScore(){
   return score;
 }
 
+
+// Battery info feedback in the Other menu
 void drawBatteryInfo() {
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -1308,6 +1374,7 @@ void drawBatteryInfo() {
   display.println(sensor.getInstantaneousVoltage());
 }
 
+// About
 void drawAboutApp() {
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -1319,6 +1386,7 @@ void drawAboutApp() {
   display.println("Creator: Balazs Simon\nWeb:\nhackster.io/Abysmal");
 }
 
+// The same init as in the example, but with some smaller changes
 void enableCharging(){ //Configure the Power-Management (Power-Hold)
   MAX77650_init();
 
@@ -1334,14 +1402,6 @@ void enableCharging(){ //Configure the Power-Management (Power-Hold)
   if (MAX77650_debug) Serial.print("Checking OTP options: ");
   if (MAX77650_getCID() != MAX77650_CID) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");     //checking OTP options
   //Values for NTC beta=3800K; Battery-values are for 1s 303759 with 600mAh
-  if (MAX77650_debug) Serial.print("Set the VCOLD JEITA Temperature Threshold to 0°C: ");
-  if (MAX77650_setTHM_COLD(2)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //0°C
-  if (MAX77650_debug) Serial.print("Set the VCOOL JEITA Temperature Threshold to 15°C: ");
-  if (MAX77650_setTHM_COOL(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //15°C
-  if (MAX77650_debug) Serial.print("Set the VWARM JEITA Temperature Threshold to 45°C: ");
-  if (MAX77650_setTHM_WARM(2)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");   //45°C
-  if (MAX77650_debug) Serial.print("Set the VHOT JEITA Temperature Threshold to 60°C: ");
-  if (MAX77650_setTHM_HOT(3)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed");    //60°C
   if (MAX77650_debug) Serial.print("Set CHGIN regulation voltage to 4.00V: ");
   if (MAX77650_setVCHGIN_MIN(0)) if (MAX77650_debug) Serial.println("okay"); else if (MAX77650_debug) Serial.println("failed"); //
   if (MAX77650_debug) Serial.print("Set CHGIN Input Current Limit to 300mA: ");

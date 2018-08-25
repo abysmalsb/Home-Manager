@@ -1,3 +1,16 @@
+/**************************************************************
+ * This code controls the Home Manager's following module:
+ * LED lights at the kitchen sink. More info:
+ * https://www.hackster.io/Abysmal/home-manager-db49c6
+ * 
+ * This project is made for "Unleash Invisible Intelligence"
+ * contest on hackster.io. More info:
+ * https://www.hackster.io/contests/maximunleash
+ * 
+ * author: Balázs Simon
+ *
+ **************************************************************/
+
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
@@ -5,7 +18,6 @@
 #define LED_LIGHTING      12
 
 // Update these with values suitable for your network.
-
 const char* ssid = "your ssid";
 const char* password = "password of your wifi network";
 const char* mqtt_server = "mqtt server address";

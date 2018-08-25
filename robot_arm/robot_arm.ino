@@ -1,8 +1,23 @@
+/**************************************************************
+ * This code controls the Home Manager's robot arm,
+ * it uses special messages, but it doesn't seem to
+ * be a big issue. More info:
+ * https://www.hackster.io/Abysmal/home-manager-db49c6
+ * 
+ * This project is made for "Unleash Invisible Intelligence"
+ * contest on hackster.io. More info:
+ * https://www.hackster.io/contests/maximunleash
+ * 
+ * author: Balázs Simon
+ *
+ **************************************************************/
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
+// don't leave it true if you don't use it
 #define DEBUG false
 
+// Update these with values suitable for your network.
 const char* ssid = "your ssid";
 const char* password = "password of your wifi network";
 const char* mqtt_server = "mqtt server address";
