@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include "Gsender.h"
 
-#define DEBUG false
+#define DEBUG true
 
 const char* ssid = "your ssid";
 const char* password = "password of your wifi network";
@@ -51,7 +51,7 @@ void reconnect() {
       // Once connected, publish an announcement...
       // client.publish("my_door_lock", "hello world");
       // ... and resubscribe
-      client.subscribe("mimosa_humidity_level");
+      client.subscribe("mimosa_moisture_level");
     } else {
       if (DEBUG) {
         Serial.print("failed, rc=");

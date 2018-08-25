@@ -54,12 +54,14 @@ char * sportSubMenu[] = {
 };
 
 #define MY_DOOR_LOCK        0
-#define IRRIGATING_MIMOSA     1
+#define IRRIGATING_MIMOSA   1
 #define KITCHEN_SINK_LIGHTS 2
+#define DALEK               3
 char * homeSubMenu[] = {
   "My door lock",
   "Irrigating mimosa",
-  "Kitchen sink lights"
+  "Kitchen sink lights",
+  "Dalek"
 };
 
 #define CONTROL         0
@@ -94,7 +96,7 @@ char * robotArmSegments[] = {
 int selectedRobotArmSegment = BASE;
 
 #define DOOR_LOCK_OPEN        3000                              // the door stays open for 3 seconds
-#define EMAIL_CONTACT         "test@example.com"        // e-mail address of your emergency contact
+#define EMAIL_CONTACT         "test@example.com"                // e-mail address of your emergency contact
 #define EMERGENCY_MSG         "I need help, please come ASAP!"  // emergency email message
 #define FALL_MSG              "I fell, please help!"            // automatic message in case of the owner fell
 
@@ -112,6 +114,7 @@ bool overThreshold = false;
 #define MQTT_TOPIC_IRRIGATING_MIMOSA    "irrigating_mimosa"
 #define MQTT_TOPIC_KITCHEN_SINK_LIGHTS  "kitchen_sink_lights"
 #define MQTT_TOPIC_ROBOT_CONTROL        "robot_control"
+#define MQTT_TOPIC_DALEK                "dalek"
 
 float robotBaseAngle = 90.0f;
 float robotLowerJointAngle = 90.0f;
@@ -129,7 +132,7 @@ bool displayEnabled = true;
 long timeOfLastClick = 0;
 int displaySleepIn = 60000; // millis
 
-float mimosaSoilHumidity = 0;
+int mimosaSoilMoisture = 0;
 
 // Dinosaur game config
 #define GAME_SPEED      150
@@ -364,6 +367,7 @@ void setup()   {
   // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
   display.setRotation(2); // rotating the screen upside down
+  display.setTextWrap(false);
 
   // Showing the name of the device and the logos
   display.clearDisplay();
@@ -488,8 +492,8 @@ void loop() {
     JsonObject& root = jsonBuffer.parseObject(message);
 
     String topic = root["topic"];
-    if(topic.equals("mimosa_humidity_level")){
-      mimosaSoilHumidity = atof(root["message"]);
+    if(topic.equals("mimosa_moisture_level")){
+      mimosaSoilMoisture = atoi(root["message"]);
     }
   }
 }
@@ -614,7 +618,7 @@ int getLastElementOfCurrentSubMenu() {
     case SPORT:
       return JUMPING;
     case HOME:
-      return KITCHEN_SINK_LIGHTS;
+      return DALEK;
     case ROBOT_ARM:
       return VIEW_SENSOR;
     case GAMES:
@@ -655,6 +659,9 @@ void refreshApplication() {
       else if (currentMenuPointInSubMenu == KITCHEN_SINK_LIGHTS) {
         drawKitchenSinkLights();
       }
+      else if (currentMenuPointInSubMenu == DALEK) {
+        drawDalek();
+      }
       break;
     case ROBOT_ARM:
       if (currentMenuPointInSubMenu == CONTROL) {
@@ -692,9 +699,7 @@ void drawCallForHelp(){
   display.setCursor(0, 8);
   display.println("Contact:");
   display.setCursor(0, 16);
-  display.setTextWrap(false);
   display.println(EMAIL_CONTACT);
-  display.setTextWrap(true);
   if (doTask){
     if(!previousDoTask){
       previousDoTask = true;
@@ -887,7 +892,7 @@ void drawIrrigatingMimosa(){
   display.setCursor(0, 12);
   display.println("Soil moisture:");
   display.setCursor(86, 12);
-  display.println(mimosaSoilHumidity);
+  display.println(mimosaSoilMoisture);
   if (doTask){
     if(!previousDoTask){
       previousDoTask = true;
@@ -943,6 +948,54 @@ void drawKitchenSinkLights(){
   }
 }
 
+void drawDalek(){
+  if (doTask){
+    if(!previousDoTask){
+      previousDoTask = true;
+      ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
+      ESP_SERIAL.print(MQTT_TOPIC_DALEK);
+      ESP_SERIAL.println("\",\"message\":1}");
+    }
+    
+    display.display();
+    display.setTextSize(4);
+    int i = 0;
+    int color = WHITE;
+    
+    while(true){
+      if(abs(i) % 20 == 0){
+        display.setTextColor(BLACK, WHITE);
+        color = WHITE;
+      }
+      else if(abs(i) % 20 == 10){
+        display.setTextColor(WHITE, BLACK);
+        color = BLACK;
+      }
+      display.clearDisplay();
+      display.fillRect(0, 0, 128, 2, color);
+      display.setCursor(i, 2);
+      display.println("EXTERMINATE EXTERMINATE");
+      display.display();
+      i--;
+      if (i == -424) break;
+    }
+    doTask = !doTask;
+  }
+  else{
+    previousDoTask = false;
+    display.setTextSize(1);
+    display.fillRect(0, 0, 128, 8, WHITE);
+    display.setTextColor(BLACK);
+    display.setCursor(49, 0);
+    display.println("Dalek");
+    display.setTextColor(WHITE);
+    display.setCursor(0, 12);
+    display.println("Status: Relaxing");
+    display.setCursor(31, 24);
+    display.println("Exterminate");
+  }
+}
+
 void drawControl(){
   display.setTextSize(1);
   display.fillRect(0, 0, 128, 8, WHITE);
@@ -950,9 +1003,12 @@ void drawControl(){
   display.setCursor(43, 0);
   display.println("Control");
 
+
   if(doTask){
     mpu6050.update();
   }
+  
+  char command = selectedRobotArmSegment == GRIPPER ? 'G' : 'A';
 
   switch(selectedRobotArmSegment){
     case BASE:
@@ -990,15 +1046,20 @@ void drawControl(){
     ESP_SERIAL.print("{\"type\":\"mqtt\",\"topic\":\"");
     ESP_SERIAL.print(MQTT_TOPIC_ROBOT_CONTROL);
     ESP_SERIAL.print("\",\"message\":\"");
-    ESP_SERIAL.print(20);
+    ESP_SERIAL.print(command);
     ESP_SERIAL.print(" ");
-    ESP_SERIAL.print(robotBaseAngle);
-    ESP_SERIAL.print(" ");
-    ESP_SERIAL.print(robotLowerJointAngle);
-    ESP_SERIAL.print(" ");
-    ESP_SERIAL.print(robotUpperJointAngle);
-    ESP_SERIAL.print(" ");
-    ESP_SERIAL.print(robotGripper > 0);
+    if(command == 'A'){
+      ESP_SERIAL.print(10);
+      ESP_SERIAL.print(" ");
+      ESP_SERIAL.print((int)robotUpperJointAngle + 90);
+      ESP_SERIAL.print(" ");
+      ESP_SERIAL.print((int)robotLowerJointAngle + 90);
+      ESP_SERIAL.print(" ");
+      ESP_SERIAL.print((int)robotBaseAngle + 90);
+    }
+    else {
+      ESP_SERIAL.print(robotGripper > 0);
+    }
     ESP_SERIAL.println("\"}");
   }
   
@@ -1258,7 +1319,7 @@ void drawAboutApp() {
   display.println("Creator: Balazs Simon\nWeb:\nhackster.io/Abysmal");
 }
 
-void enableCharging(){//Configure the Power-Management (Power-Hold)
+void enableCharging(){ //Configure the Power-Management (Power-Hold)
   MAX77650_init();
 
   //Baseline Initialization following rules printed in MAX77650 Programmres Guide Chapter 4 Page 5

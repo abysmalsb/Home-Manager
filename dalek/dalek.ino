@@ -1,10 +1,8 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-#define BUTTON            13
-#define LED_LIGHTING      12
-
-// Update these with values suitable for your network.
+#define DALEK_PIN         4   // D2
+#define ENABLE_TIME       15500
 
 const char* ssid = "your ssid";
 const char* password = "password of your wifi network";
@@ -12,16 +10,10 @@ const char* mqtt_server = "mqtt server address";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-
 long lastMsg = 0;
-char msg[50];
-int value = 0;
-int ledState = LOW;
-int previousButtonState = LOW;
 
 void setup() {
-  pinMode(BUTTON, INPUT);            // Initialize the BUTTON pin as an input
-  pinMode(LED_LIGHTING, OUTPUT);     // Initialize the LED_LIGHTING pin as an output
+  pinMode(DALEK_PIN, OUTPUT);
   Serial.begin(115200);
   setup_wifi();
   client.setServer(mqtt_server, 1883);
@@ -60,13 +52,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
   // Switch on the LED if an 1 was received as first character
   if ((char)payload[0] == '1') {
-    digitalWrite(LED_LIGHTING, HIGH);
-    ledState = HIGH;
-  } else {
-    digitalWrite(LED_LIGHTING, LOW);
-    ledState = LOW;
-  }
-
+    digitalWrite(DALEK_PIN, HIGH);
+    delay(ENABLE_TIME);
+    digitalWrite(DALEK_PIN, LOW);
+  } 
 }
 
 void reconnect() {
@@ -74,9 +63,9 @@ void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("Kitchen Sink Lights")) {
-      Serial.println("connected");
-      client.subscribe("kitchen_sink_lights");
+    if (client.connect("Dalek")) {
+      Serial.println("connected"); \
+      client.subscribe("dalek");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -92,17 +81,4 @@ void loop() {
     reconnect();
   }
   client.loop();
-
-  int buttonState = digitalRead(BUTTON);
-  if (buttonState) {
-    if (!previousButtonState) {
-      ledState = !ledState;
-      digitalWrite(LED_LIGHTING, ledState);
-      previousButtonState = HIGH;
-      delay(50);
-    }
-  }
-  else {
-    previousButtonState = LOW;
-  }
 }
